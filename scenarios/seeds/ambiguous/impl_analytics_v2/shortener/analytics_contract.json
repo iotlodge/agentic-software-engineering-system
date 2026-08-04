@@ -1,0 +1,5 @@
+{
+  "visibility_seconds": 5,
+  "acknowledged_event_loss": "none within test envelope",
+  "source": "consistency_contract v2 (evaluator revision: 60s -> 5s)"
+}

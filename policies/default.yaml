@@ -1,0 +1,96 @@
+# Control-plane policy. First matching rule wins; unmatched actions -> default.
+# Posture: default deny. Shell access never implies network or secret access.
+version: "1"
+default: deny
+
+rules:
+  # ---- hard denials come first -------------------------------------------
+  - id: deny-secret-access
+    action: secrets.read
+    decision: deny
+    reasons: [no_secret_access_for_agents]
+
+  - id: deny-external-network
+    action: network.external
+    decision: deny
+    reasons: [no_external_network_from_workers]
+
+  - id: deny-protected-git-internals
+    action: workspace.write
+    resource: ".git/*"
+    decision: deny
+    reasons: [protected_path]
+
+  - id: deny-policy-self-modification
+    action: workspace.write
+    resource: "policies/*"
+    decision: deny
+    reasons: [no_policy_weakening_by_run]
+
+  - id: deny-test-deletion
+    action: workspace.delete
+    resource: "tests/*"
+    decision: deny
+    reasons: [protected_tests]
+
+  # ---- approval-required gates -------------------------------------------
+  - id: schema-migration-needs-approval
+    action: schema.migrate
+    decision: approval_required
+    reasons: [schema_change, rollback_plan_required]
+
+  - id: high-risk-plan-needs-approval
+    action: plan.adopt
+    when_risk_at_least: high
+    decision: approval_required
+    reasons: [high_risk_plan]
+
+  - id: material-ambiguity-needs-human
+    action: assumption.adopt
+    decision: approval_required
+    reasons: [material_ambiguity, reversible_default_proposed]
+
+  - id: release-needs-final-approval
+    action: release.promote
+    decision: approval_required
+    reasons: [final_quality_gate]
+
+  - id: large-diff-needs-approval
+    action: change.integrate
+    when_gte: { key: changed_lines, value: 1500 }
+    decision: approval_required
+    reasons: [diff_exceeds_review_threshold]
+
+  # ---- allowances ---------------------------------------------------------
+  - id: allow-plan-adopt-low-risk
+    action: plan.adopt
+    decision: allow
+
+  - id: allow-change-integrate
+    action: change.integrate
+    decision: allow
+
+  - id: allow-workspace-write
+    action: workspace.write
+    resource: "*"
+    decision: allow
+
+  - id: allow-workspace-read
+    action: workspace.read
+    resource: "*"
+    decision: allow
+
+  - id: allow-python
+    action: command.run
+    resource: "python*"
+    decision: allow
+
+  - id: allow-pytest
+    action: command.run
+    resource: "pytest"
+    decision: allow
+
+  - id: allow-git
+    action: command.run
+    resource: "git"
+    decision: allow

@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ASE — Engineering Control Plane</title>
+<style>
+/* ── The Daylight Glass — warm paper, cool ink, bronze accent ─────────── */
+:root{
+  color-scheme:light;
+  --void:#F1EDE2; --deep:#E9E3D3; --card:rgba(252,249,241,.98);
+  --hair:#D6CDB8; --hair2:#BFB499;
+  --star:#262C3D; --dim:#5D6377; --faint:#A09880;
+  --brass:#9C721D; --brassdim:#C7AE74; --on-accent:#faf6ec;
+  --near:#237A50; --blue:#3D5C9F; --red:#B0503F; --viol:#6C4BB0;
+  --warn:#7a6000;
+  --mono:ui-monospace,"SF Mono",Menlo,monospace;
+  --serif:Palatino,Georgia,serif;
+  --sh-card:0 10px 34px rgba(96,80,40,.18);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font:14px/1.5 system-ui,sans-serif;color:var(--star);
+  background:radial-gradient(1400px 700px at 82% -8%,rgba(61,92,159,.05),transparent 62%),var(--void);
+}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--hair);border-radius:5px;border:2px solid var(--void)}
+::-webkit-scrollbar-track{background:transparent}
+
+header{
+  display:flex;align-items:baseline;gap:1.1rem;
+  padding:1.1rem 1.6rem .9rem;border-bottom:1px solid var(--hair);
+}
+.crest{
+  font-family:var(--serif);font-variant-caps:small-caps;letter-spacing:.34em;
+  font-size:1.02rem;color:var(--star);
+}
+.crest b{font-weight:400;color:var(--brass)}
+.tagline{font:.72rem var(--mono);color:var(--faint)}
+header .spacer{flex:1}
+.fleet{font:.72rem var(--mono);color:var(--dim)}
+
+.layout{display:grid;grid-template-columns:290px 1fr;min-height:calc(100% - 58px)}
+
+/* ── left rail: runs ── */
+nav{border-right:1px solid var(--hair);padding:1.1rem;overflow-y:auto}
+.rail-label{
+  font-family:var(--serif);font-variant-caps:small-caps;letter-spacing:.24em;
+  font-size:.82rem;color:var(--faint);margin:.2rem 0 .7rem;
+}
+.runcard{
+  border:1px solid var(--hair);border-radius:12px;padding:.7rem .9rem;margin-bottom:.6rem;
+  background:linear-gradient(155deg,rgba(159,182,232,.05),transparent 70%);
+  cursor:pointer;transition:filter .12s;
+}
+.runcard:hover{filter:brightness(1.05)}
+.runcard.active{border-color:var(--brassdim);box-shadow:inset 3px 0 0 var(--brass)}
+.runcard .name{font:700 .82rem var(--mono);color:var(--star)}
+.runcard .meta{font:.66rem var(--mono);color:var(--faint);margin-top:.25rem}
+
+/* ── pills ── */
+.pill{
+  display:inline-block;border:1px solid currentColor;border-radius:999px;
+  font:.62rem var(--mono);padding:.1rem .55rem;vertical-align:middle;
+}
+.pill.promoted,.pill.review_ready,.pill.succeeded{color:var(--near)}
+.pill.executing,.pill.running{color:var(--blue)}
+.pill.awaiting_approval{color:var(--brass)}
+.pill.failed,.pill.denied{color:var(--red)}
+.pill.safe_stopped{color:var(--viol)}
+.pill.pending,.pill.created{color:var(--dim)}
+.pill.stale,.pill.cancelled,.pill.waived{color:var(--faint);opacity:.6}
+
+/* breathing dot for live states */
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:.35rem;vertical-align:1px}
+.dot.live{background:var(--blue);animation:breathe 1.6s ease-in-out infinite}
+.dot.wait{background:var(--brass);animation:breathe 2.6s ease-in-out infinite}
+@keyframes breathe{0%,100%{box-shadow:0 0 0 0 rgba(61,92,159,.35)}50%{box-shadow:0 0 0 6px rgba(61,92,159,0)}}
+@media(prefers-reduced-motion:reduce){*{animation:none!important}}
+
+/* ── main ── */
+main{padding:1.4rem 1.6rem;overflow-y:auto}
+.section{
+  font-family:var(--serif);font-variant-caps:small-caps;letter-spacing:.24em;
+  font-size:.82rem;color:var(--faint);margin:1.4rem 0 .6rem;
+}
+.section:first-child{margin-top:0}
+
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:.8rem}
+.tile{
+  border:1px solid var(--hair);border-radius:12px;padding:1rem 1.1rem;min-height:96px;
+  background:linear-gradient(155deg,rgba(159,182,232,.05),transparent 70%);
+  display:flex;flex-direction:column;justify-content:space-between;
+}
+.tile .n{font:800 1.9rem/1.1 system-ui,sans-serif;letter-spacing:-.02em}
+.tile .lbl{
+  font-family:var(--serif);font-variant-caps:small-caps;letter-spacing:.18em;
+  font-size:.72rem;color:var(--faint);
+}
+.tile .sub{font:.62rem var(--mono);color:var(--dim)}
+
+.panel{
+  border:1px solid var(--hair);border-radius:10px;background:var(--card);
+  padding:1rem 1.1rem;overflow-x:auto;
+}
+svg text{font-family:var(--mono)}
+
+/* approvals */
+.approval{
+  border:1px solid var(--brassdim);border-left:3px solid var(--brass);
+  border-radius:10px;padding:.8rem 1rem;margin-bottom:.6rem;background:var(--card);
+}
+.approval .t{font:700 .8rem var(--mono)}
+.approval .d{font:.7rem var(--mono);color:var(--dim);margin:.3rem 0 .5rem}
+.approval .subjects{font:.62rem var(--mono);color:var(--faint)}
+button{
+  background:var(--brass);color:var(--on-accent);border:none;border-radius:8px;
+  padding:.45rem 1rem;font:700 .74rem var(--mono);cursor:pointer;
+}
+button:hover{filter:brightness(1.08)}
+button.ghost{background:transparent;color:var(--red);border:1px solid currentColor}
+input{
+  background:var(--deep);border:1px solid var(--hair2);border-radius:6px;
+  padding:.4rem .6rem;font:.74rem var(--mono);color:var(--star);
+}
+
+/* tables + feed */
+table{border-collapse:collapse;width:100%;font:.72rem var(--mono)}
+th{
+  text-align:left;font-family:var(--serif);font-variant-caps:small-caps;
+  letter-spacing:.18em;font-size:.72rem;font-weight:400;color:var(--faint);
+  border-bottom:1px solid var(--hair);padding:.35rem .6rem .35rem 0;
+}
+td{border-bottom:1px solid var(--hair);padding:.4rem .6rem .4rem 0;color:var(--dim)}
+td.k{color:var(--star)}
+tr.stale td{opacity:.5;text-decoration:line-through}
+.feed{max-height:340px;overflow-y:auto;font:.7rem var(--mono)}
+.feed .ev{display:flex;gap:.7rem;padding:.28rem 0;border-bottom:1px dashed var(--hair)}
+.feed .ts{color:var(--faint);white-space:nowrap}
+.feed .ty{color:var(--blue);min-width:150px}
+.feed .ty.bad{color:var(--red)}
+.feed .ty.good{color:var(--near)}
+.feed .ty.gold{color:var(--brass)}
+.feed .pl{color:var(--dim);word-break:break-word}
+.empty{font:.74rem var(--mono);color:var(--faint);padding:1rem 0}
+.reason{font:.72rem var(--mono);color:var(--red);margin-top:.4rem}
+</style>
+</head>
+<body>
+<header>
+  <div class="crest">agentic <b>software engineering</b></div>
+  <div class="tagline">governed runs · durable state · evidence over assertion</div>
+  <div class="spacer"></div>
+  <div class="fleet" id="fleet"></div>
+</header>
+<div class="layout">
+  <nav>
+    <div class="rail-label">engineering runs</div>
+    <div id="runs"></div>
+  </nav>
+  <main id="main"><div class="empty">No run selected.</div></main>
+</div>
+<script>
+const $ = (sel, el=document) => el.querySelector(sel);
+let selected = null, detail = null;
+
+const LIVE = new Set(["executing","running","created","replanning"]);
+const fmtTs = ts => ts ? ts.slice(11,19) : "";
+
+async function jget(url){ const r = await fetch(url); return r.json(); }
+
+async function refresh(){
+  const [runs, fleet] = await Promise.all([jget("/api/runs"), jget("/api/metrics")]);
+  const sr = fleet.run_success_rate || {};
+  $("#fleet").textContent =
+    `${fleet.runs_total ?? 0} runs · success ${sr.numerator ?? 0}/${sr.denominator ?? 0}`;
+  const rail = $("#runs");
+  rail.innerHTML = runs.length ? "" : '<div class="empty">No runs yet — try `ase demo`.</div>';
+  for (const r of runs.slice().reverse()){
+    const el = document.createElement("div");
+    el.className = "runcard" + (r.id === selected ? " active" : "");
+    const dot = LIVE.has(r.status) ? '<span class="dot live"></span>'
+      : r.status === "awaiting_approval" ? '<span class="dot wait"></span>' : "";
+    el.innerHTML = `<div class="name">${dot}${r.scenario || r.id}</div>
+      <div class="meta">${r.id} · req v${r.requirement_version} · plan v${r.plan_version}</div>
+      <div class="meta" style="margin-top:.35rem"><span class="pill ${r.status}">${r.status}</span></div>`;
+    el.onclick = () => { selected = r.id; render(); };
+    rail.appendChild(el);
+  }
+  if (!selected && runs.length) selected = runs[runs.length-1].id;
+  if (selected) {
+    detail = await jget(`/api/runs/${selected}`);
+    render();
+  }
+}
+
+function tile(n, lbl, sub){
+  return `<div class="tile"><div class="n">${n}</div>
+    <div><div class="lbl">${lbl}</div><div class="sub">${sub||""}</div></div></div>`;
+}
+
+function render(){
+  if (!detail || detail.error) return;
+  const {run, tasks, artifacts, approvals, metrics} = detail;
+  const m = metrics || {};
+  const pending = approvals.filter(a => a.status === "pending");
+  const main = $("#main");
+  main.innerHTML = `
+    <div style="display:flex;align-items:baseline;gap:.9rem">
+      <div style="font:800 1.5rem system-ui;letter-spacing:-.03em;
+        background:linear-gradient(90deg,var(--star),var(--blue));
+        -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent">
+        ${run.scenario || run.id}</div>
+      <span class="pill ${run.status}">${run.status}</span>
+      <span class="pill" style="color:var(--dim)">risk ${run.risk}</span>
+      <span style="font:.66rem var(--mono);color:var(--faint)">${run.id} · ${run.branch}</span>
+    </div>
+    ${run.stop_reason ? `<div class="reason">■ ${run.stop_reason}</div>` : ""}
+    <div class="section">vitals</div>
+    <div class="tiles">
+      ${tile(m.waves ?? 0, "waves", "scheduling iterations")}
+      ${tile((m.tasks_succeeded ?? 0)+"/"+(m.tasks_total ?? 0), "tasks", "succeeded / total")}
+      ${tile(m.retries ?? 0, "retries", "transient failures")}
+      ${tile(m.repairs ?? 0, "repairs", "bounded repair loops")}
+      ${tile(run.replans, "re-plans", "req v"+run.requirement_version+" · plan v"+run.plan_version)}
+      ${tile((m.policy?.evaluated ?? 0), "policy checks",
+             (m.policy?.denied ?? 0)+" denied · "+(m.policy?.approval_required ?? 0)+" gated")}
+      ${tile(m.active_execution_s != null ? m.active_execution_s+"s" : "—", "active exec",
+             "wall "+(m.wall_clock_s ?? "—")+"s")}
+    </div>
+    ${pending.length ? '<div class="section">awaiting your decision</div>' : ""}
+    <div id="approvals"></div>
+    <div class="section">dependency graph — plan v${run.plan_version}</div>
+    <div class="panel" id="dag"></div>
+    <div class="section">artifact lineage</div>
+    <div class="panel" style="max-height:280px;overflow-y:auto">${artifactTable(artifacts)}</div>
+    <div class="section">event feed</div>
+    <div class="panel feed" id="feed"></div>`;
+  renderApprovals(pending);
+  renderDag(tasks);
+  renderFeed(run.id);
+}
+
+function artifactTable(arts){
+  if (!arts.length) return '<div class="empty">none yet</div>';
+  const rows = arts.map(a => `
+    <tr class="${a.stale ? "stale" : ""}">
+      <td class="k">${a.name}</td><td>v${a.version}</td><td>${a.kind}</td>
+      <td>${a.parents.join(", ") || "—"}</td>
+      <td>${a.produced_by || "—"}</td>
+      <td>${a.digest.slice(7,17)}</td>
+      <td>${a.revision ? a.revision.slice(0,10) : "—"}</td>
+    </tr>`).join("");
+  return `<table><tr><th>artifact</th><th>ver</th><th>kind</th><th>derived from</th>
+    <th>produced by</th><th>digest</th><th>revision</th></tr>${rows}</table>`;
+}
+
+function renderApprovals(pending){
+  const host = $("#approvals");
+  host.innerHTML = "";
+  for (const a of pending){
+    const el = document.createElement("div");
+    el.className = "approval";
+    const subjects = Object.entries(a.subject_digests)
+      .map(([k,v]) => `${k}@${v.slice(7,15)}`).join(" · ");
+    el.innerHTML = `
+      <div class="t">${a.scope} — ${a.title}</div>
+      <div class="d">${a.description || ""} <span class="pill ${a.risk}"
+        style="color:var(--warn)">risk ${a.risk}</span></div>
+      <div class="subjects">bound to: ${subjects || "(no subject digests)"}</div>
+      <div style="display:flex;gap:.5rem;margin-top:.6rem;align-items:center">
+        <input placeholder="your name" value="jb" style="width:110px">
+        <input placeholder="reason" style="flex:1">
+        <button data-ok="1">Approve</button>
+        <button class="ghost">Reject</button>
+      </div>`;
+    const [who, why] = el.querySelectorAll("input");
+    for (const btn of el.querySelectorAll("button")){
+      btn.onclick = async () => {
+        btn.disabled = true;
+        const resp = await fetch(`/api/approvals/${a.id}/resolve`, {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify({approve: !!btn.dataset.ok,
+            approver: who.value || "dashboard", reason: why.value || ""})});
+        if (!resp.ok) alert((await resp.json()).error);
+        refresh();
+      };
+    }
+    host.appendChild(el);
+  }
+}
+
+/* layered DAG: columns by longest-path depth, warm ink edges */
+function renderDag(tasks){
+  const host = $("#dag");
+  if (!tasks.length){ host.innerHTML = '<div class="empty">no tasks yet</div>'; return; }
+  const byName = Object.fromEntries(tasks.map(t => [t.name, t]));
+  const depth = {};
+  const d = name => {
+    if (name in depth) return depth[name];
+    const t = byName[name];
+    depth[name] = t && t.depends_on.length
+      ? 1 + Math.max(...t.depends_on.map(x => byName[x] ? d(x) : 0)) : 0;
+    return depth[name];
+  };
+  tasks.forEach(t => d(t.name));
+  const cols = {};
+  tasks.forEach(t => (cols[depth[t.name]] ||= []).push(t));
+  const CW = 190, RH = 46, PADX = 12, PADY = 14, W = 150, H = 32;
+  const nCols = Object.keys(cols).length;
+  const maxRows = Math.max(...Object.values(cols).map(c => c.length));
+  const width = nCols * CW + PADX * 2, height = maxRows * RH + PADY * 2;
+  const pos = {};
+  Object.entries(cols).forEach(([c, list]) =>
+    list.forEach((t, i) => pos[t.name] = {
+      x: PADX + c * CW,
+      y: PADY + i * RH + (maxRows - list.length) * RH / 2 }));
+  const colors = {succeeded:"#237A50", running:"#3D5C9F", failed:"#B0503F",
+    pending:"#A09880", stale:"#A09880", cancelled:"#A09880", waived:"#6C4BB0"};
+  let edges = "", nodes = "";
+  for (const t of tasks){
+    const p = pos[t.name];
+    for (const dep of t.depends_on){
+      const q = pos[dep]; if (!q) continue;
+      const x1 = q.x + W, y1 = q.y + H/2, x2 = p.x, y2 = p.y + H/2;
+      edges += `<path d="M${x1},${y1} C${x1+28},${y1} ${x2-28},${y2} ${x2},${y2}"
+        fill="none" stroke="#8b8268" stroke-width="1.1" opacity=".55"/>`;
+    }
+  }
+  for (const t of tasks){
+    const p = pos[t.name], c = colors[t.status] || "#A09880";
+    const gate = t.gate ? (t.gate_cleared ? " ✓" : " ⛩") : "";
+    nodes += `<g>
+      <rect x="${p.x}" y="${p.y}" width="${W}" height="${H}" rx="8"
+        fill="rgba(252,250,244,.95)" stroke="#c9bfa6"/>
+      <rect x="${p.x}" y="${p.y}" width="3" height="${H}" rx="1.5" fill="${c}"/>
+      <text x="${p.x+11}" y="${p.y+14}" font-size="10" fill="#252b3c">${t.name}${gate}</text>
+      <text x="${p.x+11}" y="${p.y+26}" font-size="8.5" fill="${c}">${t.status}</text>
+      ${t.attempts > 1 ? `<text x="${p.x+W-16}" y="${p.y+14}" font-size="8.5"
+        fill="#a1611f">×${t.attempts}</text>` : ""}
+    </g>`;
+  }
+  host.innerHTML = `<svg width="${width}" height="${height}"
+    viewBox="0 0 ${width} ${height}">${edges}${nodes}</svg>`;
+}
+
+const GOOD = /completed|passed|promoted|resolved|recorded/;
+const BAD = /failed|denied|stale|invalidated|safe_stopped/;
+const GOLD = /approval|gate|revised|repair|fallback|rollback/;
+async function renderFeed(runId){
+  const events = await jget(`/api/runs/${runId}/events`);
+  const host = $("#feed");
+  host.innerHTML = events.slice().reverse().map(e => {
+    const cls = BAD.test(e.type) ? "bad" : GOLD.test(e.type) ? "gold"
+      : GOOD.test(e.type) ? "good" : "";
+    const payload = JSON.stringify(e.payload);
+    return `<div class="ev"><span class="ts">${fmtTs(e.ts)}</span>
+      <span class="ty ${cls}">${e.type}</span>
+      <span class="pl">${e.task ? "["+e.task+"] " : ""}${payload.length > 160
+        ? payload.slice(0,160)+"…" : payload}</span></div>`;
+  }).join("") || '<div class="empty">no events</div>';
+}
+
+refresh();
+setInterval(refresh, 2500);
+</script>
+</body>
+</html>

@@ -1,0 +1,157 @@
+# Scenario 3 — Ambiguous optimization with a mid-run requirement change.
+# "Make popular links faster without losing analytics."
+# Orchestration proof: material ambiguity pauses for approval of reversible
+# assumptions (published as a versioned consistency contract); a scripted
+# evaluator revision tightens the analytics-visibility target from 60s to 5s
+# after verification, forcing selective invalidation, a new plan version,
+# renewed approval, and re-execution of only the affected subgraph.
+name: ambiguous
+request: >
+  Make popular links faster without losing analytics.
+
+requirement:
+  goals:
+    - Reduce redirect latency for frequently resolved links.
+    - Preserve click analytics across the optimization.
+  non_goals:
+    - New infrastructure services (a distributed cache may be added later
+      behind the same adapter seam).
+  acceptance_criteria:
+    - Hot lookups are served from an in-process cache bounded by TTL.
+    - The database remains the source of truth; a cache entry can never
+      outlive its link's expiry or survive a destination update.
+    - Every redirect enqueues an analytics event; aggregates become visible
+      within the approved consistency bound.
+    - Redirects fail open if analytics ingestion is unhealthy, with a
+      loss-risk metric emitted.
+  ambiguities:
+    - topic: what "popular" and "faster" mean measurably
+      materiality: material
+      proposed_default: cache hot code lookups in-process (TTL 30s, LRU 1024);
+        target p95 redirect latency under 50ms locally.
+    - topic: how much analytics delay or loss is acceptable
+      materiality: material
+      proposed_default: no acknowledged-event loss in the test envelope;
+        aggregates visible within 60 seconds.
+  assumptions:
+    - In-process TTL cache; database stays the source of truth.
+    - Analytics events buffer in memory and flush in batches; visibility
+      within 60 seconds; redirects fail open on sink failure.
+    - No new infrastructure; the cache sits behind an adapter seam.
+
+# Requirement facets published as separate versioned artifacts. The revision
+# below touches only this contract, which is what makes invalidation selective.
+contracts:
+  - name: consistency_contract
+    data:
+      analytics_visibility_seconds: 60
+      acknowledged_event_loss: none within test envelope
+      cache: in-process TTL/LRU, DB source of truth
+      p95_target_ms_local: 50
+
+impact_hints:
+  impacted_areas:
+    - redirect hot path (cache read-through)
+    - analytics ingestion (batched sink) and stats reads (aggregate table)
+    - readiness endpoint (cache and analytics health)
+  data_flows:
+    - "resolve: cache -> (miss) db -> servable check vs now -> redirect + enqueue event"
+    - "stats: flush pending -> aggregate table read"
+  risks:
+    - stale cache serving a changed or expired destination
+    - analytics loss window between buffer and flush
+    - aggregate-table migration on populated data
+
+plan:
+  - name: plan_migration
+    capability: apply_seed
+    risk: high
+    gate:
+      action: schema.migrate
+      resource: migrations/003_analytics_aggregates.sql
+      subject_artifacts: [proposal_plan_migration]
+    params:
+      seed: scenarios/seeds/ambiguous/migration
+      parents: [impact_report]
+      description: aggregate table + event index, backfilled from existing events
+  - name: implement_cache
+    capability: apply_seed
+    risk: medium
+    depends_on: [plan_migration]
+    params:
+      seed: scenarios/seeds/ambiguous/impl_cache
+      parents: [consistency_contract]
+      description: TTL/LRU cache and read-through redirect path
+  - name: implement_analytics
+    capability: apply_seed
+    risk: medium
+    depends_on: [plan_migration]
+    params:
+      seed: scenarios/seeds/ambiguous/impl_analytics
+      parents: [consistency_contract]
+      description: batched analytics sink honoring the approved visibility bound
+  - name: extend_tests
+    capability: apply_seed
+    risk: low
+    params:
+      seed: scenarios/seeds/ambiguous/tests
+      parents: [consistency_contract]
+      description: cache correctness, visibility-bound and populated-migration tests
+  - name: integrate
+    capability: integrate_change
+    depends_on: [implement_cache, implement_analytics, extend_tests]
+    params:
+      message: "perf: hot-path cache and bounded-delay analytics"
+      parents: [proposal_plan_migration, proposal_implement_cache,
+                proposal_implement_analytics, proposal_extend_tests]
+  - name: verify
+    capability: run_checks
+    depends_on: [integrate]
+    params:
+      checks:
+        - name: pytest
+          argv: ["{python}", "-m", "pytest", "tests", "-q"]
+        - name: compileall
+          argv: ["{python}", "-m", "compileall", "-q", "shortener"]
+  - name: security_scan
+    capability: security_scan
+    depends_on: [integrate]
+  - name: assemble_release
+    capability: assemble_release
+    depends_on: [verify, security_scan]
+
+# The evaluator changes the requirement after verification has passed:
+# analytics must be visible within 5 seconds, not 60. Only descendants of the
+# consistency contract are invalidated; the migration (and its approval) and
+# everything derived solely from the base requirement survive.
+revision:
+  after_task: verify
+  actor: evaluator-script
+  contract: consistency_contract
+  data:
+    analytics_visibility_seconds: 5
+    acknowledged_event_loss: none within test envelope
+    cache: in-process TTL/LRU, DB source of truth
+    p95_target_ms_local: 50
+  reason: analytics aggregates must be visible within 5 seconds (was 60)
+  require_reapproval: true
+  plan_upserts:
+    - name: implement_analytics
+      capability: apply_seed
+      risk: medium
+      depends_on: [plan_migration]
+      params:
+        seed: scenarios/seeds/ambiguous/impl_analytics_v2
+        parents: [consistency_contract]
+        description: analytics sink retuned to the 5-second visibility contract
+
+residual_risks:
+  - In-process cache means per-process hit rates; multi-instance deployments
+    need the adapter's distributed implementation.
+  - The analytics buffer is lost on hard crash within the flush interval;
+    bounded by the (now 5s) visibility window.
+rollback_notes:
+  - Migration 003 is additive (aggregate table + index); downgrade drops
+    derived data only — raw click_events remain authoritative.
+limitations:
+  - p95 latency target is a local design target, not a production SLO claim.

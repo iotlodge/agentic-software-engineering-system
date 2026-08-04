@@ -1,0 +1,130 @@
+# Scenario 2 — Brownfield change against the evolved baseline.
+# Adds optional link expiration and authorized destination updates.
+# Orchestration proof: impact analysis over existing code, a high-risk plan
+# gate, a durable schema-migration approval, a genuine failing regression
+# (expiry boundary bug) repaired through a bounded repair loop, and
+# regression protection for pre-existing behavior.
+name: brownfield
+request: >
+  Add optional link expiration and allow an authorized operator to update a
+  link's destination without breaking analytics.
+
+requirement:
+  goals:
+    - Optional absolute-UTC expiry on links; existing links default to no expiry.
+    - Expired links return a stable, documented status (410) distinct from unknown (404).
+    - Authorized destination updates that preserve the link's analytics identity.
+    - Optimistic concurrency so a lost update is a client-visible conflict (409).
+    - Audit records for administrative mutations.
+  non_goals:
+    - Physical deletion of links or events.
+    - Public (unauthenticated) mutation of links.
+  acceptance_criteria:
+    - Old links still resolve after the migration; their expiry is null and version 1.
+    - A link expiring exactly now is expired (boundary is inclusive).
+    - Unauthorized update attempts fail with 401/403 and change nothing.
+    - Concurrent updates with the same expected version produce exactly one winner and one 409.
+    - Click totals aggregate against the immutable link code across destination changes.
+    - The migration applies both to an empty and to a populated baseline database.
+  ambiguities:
+    - topic: expired-link response code
+      materiality: low
+      resolution: 410 Gone, distinct from 404, documented in the error model.
+
+impact_hints:
+  impacted_areas:
+    - links table (additive nullable expires_at, version; new link_audit table)
+    - create/get link API schemas and the redirect decision path
+    - error contract (new 410 semantics for expiry)
+    - authorization boundary for administrative updates
+    - analytics aggregation key (must remain the immutable code)
+  data_flows:
+    - "resolve: code -> links row -> expiry check -> redirect or 410"
+    - "update: admin auth -> optimistic version check -> audit row -> cache-safe read path"
+  risks:
+    - schema migration on a populated database
+    - time-boundary correctness (UTC, inclusive expiry instant)
+    - lost-update races between concurrent operators
+  compatibility_notes:
+    - additive nullable columns first; existing rows valid without rewrite
+    - clients not sending expires_at are unaffected
+
+plan:
+  - name: plan_migration
+    capability: apply_seed
+    risk: high
+    gate:
+      action: schema.migrate
+      resource: migrations/002_expiry_update.sql
+      subject_artifacts: [proposal_plan_migration]
+    params:
+      seed: scenarios/seeds/brownfield/migration
+      parents: [impact_report]
+      description: additive migration 002 (expires_at, version, link_audit)
+  - name: implement_change
+    capability: apply_seed
+    risk: medium
+    depends_on: [plan_migration]
+    params:
+      seed: scenarios/seeds/brownfield/impl
+      parents: [impact_report]
+      description: expiry domain logic, versioned updates, admin PATCH endpoint
+  - name: extend_tests
+    capability: apply_seed
+    risk: low
+    depends_on: [plan_migration]
+    params:
+      seed: scenarios/seeds/brownfield/tests
+      parents: [impact_report]
+      description: expiry boundary, auth, conflict and migration regression tests
+  - name: update_docs
+    capability: apply_seed
+    risk: low
+    params:
+      seed: scenarios/seeds/brownfield/docs
+      parents: [requirement]
+      description: changelog and operator notes for expiry/update
+  - name: integrate
+    capability: integrate_change
+    depends_on: [implement_change, extend_tests, update_docs]
+    params:
+      message: "feat: link expiry and safe destination updates"
+      parents: [proposal_plan_migration, proposal_implement_change,
+                proposal_extend_tests, proposal_update_docs]
+  - name: verify
+    capability: run_checks
+    depends_on: [integrate]
+    params:
+      checks:
+        - name: pytest
+          argv: ["{python}", "-m", "pytest", "tests", "-q"]
+        - name: compileall
+          argv: ["{python}", "-m", "compileall", "-q", "shortener"]
+  - name: security_scan
+    capability: security_scan
+    depends_on: [integrate]
+  - name: assemble_release
+    capability: assemble_release
+    depends_on: [verify, security_scan]
+
+# The seeded implementation carries a real defect: is_expired() uses a strict
+# comparison, so a link expiring exactly now is still served. The new boundary
+# regression test catches it; the engine schedules a bounded repair with the
+# corrected domain module and re-verifies.
+repair:
+  verify:
+    seed: scenarios/seeds/brownfield/fix
+    description: "expiry boundary must be inclusive (expires_at <= now)"
+    parents: [impact_report]
+
+residual_risks:
+  - Rows written after migration 002 constrain a downgrade; rolling the schema
+    back requires dropping expires_at/version data (documented, not automated).
+  - Admin token auth is a documented prototype mechanism, not an identity system.
+rollback_notes:
+  - "Code rollback: revert the merge commit on the run branch."
+  - "Schema rollback: 002 is additive; downgrade drops the new columns/table
+    and loses expiry/version/audit data recorded since. Post-migration writes
+    make a clean downgrade lossy — this is stated, not hidden."
+limitations:
+  - Expiry precision is bounded by request-time evaluation (no background reaper).

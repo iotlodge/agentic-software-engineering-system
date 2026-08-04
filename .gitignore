@@ -1,0 +1,27 @@
+# secrets
+.env
+
+# runtime state (durable store, workload repo, run worktrees, evidence)
+.ase/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+dist/
+
+# rust
+shortener-rs/target/
+
+# blueprint scratch (curated copies live in docs/assessment/)
+tmp/
+
+# memory-bank session files (never committed)
+CLAUDE.md
+CLAUDE-*.md
+
+# os / ide
+.DS_Store
+.idea/

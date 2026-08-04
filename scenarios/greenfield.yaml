@@ -1,0 +1,100 @@
+# Scenario 1 — Greenfield baseline.
+# Builds the baseline URL-shortener service in an empty workload repository.
+# Orchestration proof: parallel fan-out (impl / tests / docs), synchronization
+# at integrate, an injected transient failure retried within budget, and the
+# final human release gate.
+name: greenfield
+request: >
+  Build a URL-shortener service that creates short links, redirects visitors,
+  exposes basic click analytics, and is locally runnable and testable.
+
+requirement:
+  goals:
+    - Create an opaque short code for a valid HTTP(S) destination.
+    - Resolve the code to a temporary (307) redirect.
+    - Expose link metadata and eventually consistent click totals.
+    - Provide stable API and error contracts, health behavior, migrations,
+      tests, documentation and local setup.
+  non_goals:
+    - Custom domains, billing, multi-region replication, production deployment.
+    - Personally identifiable click tracking.
+    - A user-facing web interface.
+  acceptance_criteria:
+    - A valid create request returns a unique code and canonical short URL.
+    - Repeating a request with the same idempotency key does not create a second mapping.
+    - An existing code redirects; unknown codes return 404; disabled codes return 410.
+    - Redirect processing records an analytics event without the redirect
+      depending on aggregate computation.
+    - Concurrent create operations cannot map the same code to different destinations.
+    - OpenAPI, migrations, unit and integration tests and setup docs are present.
+    - Required quality and security checks pass on the exact output revision.
+  ambiguities:
+    - topic: redirect status code
+      materiality: low
+      resolution: 307 temporary redirect, so destinations can change and clients
+        do not permanently cache the mapping.
+    - topic: analytics consistency
+      materiality: low
+      resolution: eventually consistent counters are acceptable for the baseline.
+
+plan:
+  - name: implement_service
+    capability: apply_seed
+    risk: medium
+    params:
+      seed: scenarios/seeds/greenfield/impl
+      parents: [requirement]
+      description: baseline service (domain, persistence, analytics, API, migration 001)
+  - name: write_tests
+    capability: apply_seed
+    risk: low
+    params:
+      seed: scenarios/seeds/greenfield/tests
+      parents: [requirement]
+      description: unit, API, contract and concurrency tests for the baseline
+  - name: write_docs
+    capability: apply_seed
+    risk: low
+    params:
+      seed: scenarios/seeds/greenfield/docs
+      parents: [requirement]
+      description: setup, API and operations documentation
+  - name: integrate
+    capability: integrate_change
+    depends_on: [implement_service, write_tests, write_docs]
+    params:
+      message: "feat: baseline URL-shortener service"
+      parents: [proposal_implement_service, proposal_write_tests, proposal_write_docs]
+  - name: verify
+    capability: run_checks
+    depends_on: [integrate]
+    params:
+      checks:
+        - name: pytest
+          argv: ["{python}", "-m", "pytest", "tests", "-q"]
+        - name: compileall
+          argv: ["{python}", "-m", "compileall", "-q", "shortener"]
+  - name: security_scan
+    capability: security_scan
+    depends_on: [integrate]
+  - name: assemble_release
+    capability: assemble_release
+    depends_on: [verify, security_scan]
+
+# Demonstrates bounded retry: the first verification attempt fails with a
+# scripted transient error and is retried within the attempt budget.
+inject:
+  - task: verify
+    class: transient
+    times: 1
+
+residual_risks:
+  - SQLite is the system of record; horizontal scale requires a server database
+    (seam exists in persistence.Database).
+  - Analytics counters are process-local until flushed; a crash may lose the
+    in-memory buffer (bounded by the flush interval).
+rollback_notes:
+  - The change is a single merge commit on the run branch; reverting the merge
+    restores the empty baseline. No data migration has run against production data.
+limitations:
+  - Single-region, single-process prototype; documented scale path only.
