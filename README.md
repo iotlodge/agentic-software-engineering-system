@@ -19,32 +19,26 @@ struck through in the lineage table, and the approved promotion in the event fee
 ## The lifecycle
 
 ```mermaid
-%%{init: {"theme": "base", "themeVariables": {
-  "background": "#F1EDE2", "primaryColor": "#FCF9F1",
-  "primaryBorderColor": "#BFB499", "primaryTextColor": "#262C3D",
-  "lineColor": "#8B8268", "secondaryColor": "#E9E3D3",
-  "tertiaryColor": "#F6F1E4", "edgeLabelBackground": "#F1EDE2",
-  "fontFamily": "ui-monospace, SF Mono, Menlo, monospace", "fontSize": "13px"
-}}}%%
+%%{init: {"theme": "base", "themeVariables": {"background": "#F1EDE2", "primaryColor": "#FCF9F1", "primaryBorderColor": "#BFB499", "primaryTextColor": "#262C3D", "lineColor": "#8B8268", "secondaryColor": "#E9E3D3", "tertiaryColor": "#F6F1E4", "edgeLabelBackground": "#F1EDE2", "fontFamily": "ui-monospace, SF Mono, Menlo, monospace", "fontSize": "13px"}}}%%
 flowchart LR
-    REQ(["raw request"]) --> N["normalize<br/><i>requirement + facet contracts</i>"]
+    REQ(["raw request"]) --> N["normalize<br/>requirement + facet contracts"]
     N --> AG{{"ambiguity<br/>gate"}}
     AG -->|material ambiguity| H1["human approves<br/>reversible assumptions"]
     H1 --> AN
-    AG -->|clear| AN["analyze<br/><i>impact over existing code</i>"]
-    AN --> PL["plan<br/><i>dependency graph as data</i>"]
+    AG -->|clear| AN["analyze<br/>impact over existing code"]
+    AN --> PL["plan<br/>dependency graph as data"]
     PL --> PG{{"plan / risk<br/>gate"}}
     PG -->|high risk| H2["human approves plan"]
     PG -->|allowed| EX
-    H2 --> EX["parallel waves<br/><i>impl · tests · docs</i>"]
-    EX --> INT["integrate<br/><i>one revision, policy-checked diff</i>"]
-    INT --> V["verify<br/><i>evidence bound to exact revision</i>"]
+    H2 --> EX["parallel waves<br/>impl · tests · docs"]
+    EX --> INT["integrate<br/>one revision, policy-checked diff"]
+    INT --> V["verify<br/>evidence bound to exact revision"]
     V --> VG{{"evidence<br/>gate"}}
-    VG -->|failing check| RP["bounded repair<br/><i>re-integrate, re-verify</i>"]
+    VG -->|failing check| RP["bounded repair<br/>re-integrate, re-verify"]
     RP --> V
-    VG -->|upstream change| SR["selective re-plan<br/><i>only stale descendants</i>"]
+    VG -->|upstream change| SR["selective re-plan<br/>only stale descendants"]
     SR --> PL
-    VG -->|budget exhausted| SS(["safe-stop<br/><i>worktree preserved</i>"])
+    VG -->|budget exhausted| SS(["safe-stop<br/>worktree preserved"])
     VG -->|pass| REL["assemble release"]
     REL --> FG{{"release<br/>gate"}}
     FG -->|human approves| DONE(["promoted to main"])
@@ -147,16 +141,7 @@ governed runs — greenfield output becomes brownfield input, which resolves the
 brief's "build from scratch" vs. "brownfield reasoning" tension temporally:
 
 ```mermaid
-%%{init: {"theme": "base", "gitGraph": {"showCommitLabel": true, "mainBranchName": "main"},
-  "themeVariables": {
-  "background": "#F1EDE2", "primaryTextColor": "#262C3D",
-  "commitLabelColor": "#262C3D", "commitLabelBackground": "#F6F1E4",
-  "git0": "#9C721D", "git1": "#3D5C9F", "git2": "#237A50", "git3": "#6C4BB0",
-  "gitBranchLabel0": "#FAF6EC", "gitBranchLabel1": "#FAF6EC",
-  "gitBranchLabel2": "#FAF6EC", "gitBranchLabel3": "#FAF6EC",
-  "tagLabelBackground": "#F6EDD9", "tagLabelBorder": "#9C721D", "tagLabelColor": "#7A5A12",
-  "fontFamily": "ui-monospace, SF Mono, Menlo, monospace"
-}}}%%
+%%{init: {"theme": "base", "gitGraph": {"showCommitLabel": true, "mainBranchName": "main"}, "themeVariables": {"background": "#F1EDE2", "primaryTextColor": "#262C3D", "commitLabelColor": "#262C3D", "commitLabelBackground": "#F6F1E4", "git0": "#9C721D", "git1": "#3D5C9F", "git2": "#237A50", "git3": "#6C4BB0", "gitBranchLabel0": "#FAF6EC", "gitBranchLabel1": "#FAF6EC", "gitBranchLabel2": "#FAF6EC", "gitBranchLabel3": "#FAF6EC", "tagLabelBackground": "#F6EDD9", "tagLabelBorder": "#9C721D", "tagLabelColor": "#7A5A12", "fontFamily": "ui-monospace, SF Mono, Menlo, monospace"}}}%%
 gitGraph
     commit id: "init workload"
     branch run/greenfield
