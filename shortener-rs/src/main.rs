@@ -9,10 +9,11 @@ async fn main() {
         .ok()
         .and_then(|p| p.parse().ok())
         .unwrap_or(8788);
+    let host = std::env::var("SHORTENER_HOST").unwrap_or_else(|_| "127.0.0.1".into());
     let db = Db::open(&db_path).expect("database open + migrate");
-    let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))
+    let listener = tokio::net::TcpListener::bind((host.as_str(), port))
         .await
         .expect("bind");
-    println!("shortener-rs listening on http://127.0.0.1:{port} (db: {db_path})");
+    println!("shortener-rs listening on http://{host}:{port} (db: {db_path})");
     axum::serve(listener, app(db, &admin_token)).await.expect("serve");
 }

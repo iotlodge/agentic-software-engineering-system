@@ -10,11 +10,58 @@ The URL shortener is the **proving workload**. The system under evaluation is a
 into reviewable repository changes while preserving evidence, approvals, safety, and
 recovery behavior.
 
-```
-requirement ──▶ normalize ──▶ analyze ──▶ plan ──▶ ⛩ ──▶ parallel execution ──▶ verify ──▶ ⛩ ──▶ review-ready
-                   │                                                              │
-              ambiguity gate                                    retry · repair · fallback · safe-stop
-              (human decides)                                   selective re-plan on upstream change
+![Daylight Glass dashboard — the ambiguous run after its mid-flight re-plan: plan v2 DAG, stale artifacts struck through in the lineage table, promotion recorded in the event feed](docs/images/dashboard.png)
+
+*The Daylight Glass dashboard showing the ambiguous scenario after its mid-run
+re-plan: requirement v2 / plan v2, the re-executed subgraph, stale artifacts
+struck through in the lineage table, and the approved promotion in the event feed.*
+
+## The lifecycle
+
+```mermaid
+%%{init: {"theme": "base", "themeVariables": {
+  "background": "#F1EDE2", "primaryColor": "#FCF9F1",
+  "primaryBorderColor": "#BFB499", "primaryTextColor": "#262C3D",
+  "lineColor": "#8B8268", "secondaryColor": "#E9E3D3",
+  "tertiaryColor": "#F6F1E4", "edgeLabelBackground": "#F1EDE2",
+  "fontFamily": "ui-monospace, SF Mono, Menlo, monospace", "fontSize": "13px"
+}}}%%
+flowchart LR
+    REQ(["raw request"]) --> N["normalize<br/><i>requirement + facet contracts</i>"]
+    N --> AG{{"ambiguity<br/>gate"}}
+    AG -->|material ambiguity| H1["human approves<br/>reversible assumptions"]
+    H1 --> AN
+    AG -->|clear| AN["analyze<br/><i>impact over existing code</i>"]
+    AN --> PL["plan<br/><i>dependency graph as data</i>"]
+    PL --> PG{{"plan / risk<br/>gate"}}
+    PG -->|high risk| H2["human approves plan"]
+    PG -->|allowed| EX
+    H2 --> EX["parallel waves<br/><i>impl · tests · docs</i>"]
+    EX --> INT["integrate<br/><i>one revision, policy-checked diff</i>"]
+    INT --> V["verify<br/><i>evidence bound to exact revision</i>"]
+    V --> VG{{"evidence<br/>gate"}}
+    VG -->|failing check| RP["bounded repair<br/><i>re-integrate, re-verify</i>"]
+    RP --> V
+    VG -->|upstream change| SR["selective re-plan<br/><i>only stale descendants</i>"]
+    SR --> PL
+    VG -->|budget exhausted| SS(["safe-stop<br/><i>worktree preserved</i>"])
+    VG -->|pass| REL["assemble release"]
+    REL --> FG{{"release<br/>gate"}}
+    FG -->|human approves| DONE(["promoted to main"])
+    FG -->|rejected| DENIED(["denied, with reason"])
+
+    classDef work fill:#FCF9F1,stroke:#C9BFA6,color:#262C3D
+    classDef gate fill:#F6EDD9,stroke:#9C721D,stroke-width:2px,color:#7A5A12
+    classDef human fill:#9C721D,stroke:#7A5A12,color:#FAF6EC
+    classDef good fill:#E3EEE7,stroke:#237A50,color:#1D5C3E
+    classDef warn fill:#EFE6F2,stroke:#6C4BB0,color:#4E3583
+    classDef bad fill:#F5E7E4,stroke:#B0503F,color:#8A3F31
+    class REQ,N,AN,PL,EX,INT,V,RP,SR,REL work
+    class AG,PG,VG,FG gate
+    class H1,H2 human
+    class DONE good
+    class SS warn
+    class DENIED bad
 ```
 
 ## Why this exists
@@ -45,11 +92,23 @@ where an LLM declares its own success. This system takes the opposite position:
 | **Three governed scenarios** | `scenarios/` | Greenfield build → brownfield change → ambiguous optimization, all against **one evolving repository** |
 | **Policy as code** | `policies/default.yaml` | Default-deny; secrets/network/protected paths denied; risk-triggered approval gates |
 | **Dashboard** | `ase serve` | Live run inspection: DAG, artifact lineage, event feed, approve/reject — styled after the Orreth "Daylight Glass" light theme |
+| **Dockerized environment** | `ase-env.sh` + `compose.yaml` | One script: start / stop / restart / demo / logs / clean, with persistent state volumes |
 | **Assessment blueprint** | `docs/assessment/` | The original assignment deconstruction this implementation follows |
 
 ## Quickstart
 
-Requires Python 3.12+, [uv](https://docs.astral.sh/uv/), git. Rust toolchain optional.
+### Docker (nothing but Docker required)
+
+```bash
+./ase-env.sh start        # build + start the dashboard    → http://localhost:8787
+./ase-env.sh demo         # run the three governed scenarios inside the container
+./ase-env.sh start --all  # also serve both workloads      → :8000 (Python), :8788 (Rust)
+./ase-env.sh stop|restart|status|logs|clean
+```
+
+Run state lives in named volumes and survives `stop`/`restart`; `clean` wipes it.
+
+### Local (Python 3.12+, [uv](https://docs.astral.sh/uv/), git)
 
 ```bash
 uv sync                 # install
@@ -86,6 +145,38 @@ cargo run                            # serves on :8788
 The workload repository is created at `.ase/workload` and evolved by successive
 governed runs — greenfield output becomes brownfield input, which resolves the
 brief's "build from scratch" vs. "brownfield reasoning" tension temporally:
+
+```mermaid
+%%{init: {"theme": "base", "gitGraph": {"showCommitLabel": true, "mainBranchName": "main"},
+  "themeVariables": {
+  "background": "#F1EDE2", "primaryTextColor": "#262C3D",
+  "commitLabelColor": "#262C3D", "commitLabelBackground": "#F6F1E4",
+  "git0": "#9C721D", "git1": "#3D5C9F", "git2": "#237A50", "git3": "#6C4BB0",
+  "gitBranchLabel0": "#FAF6EC", "gitBranchLabel1": "#FAF6EC",
+  "gitBranchLabel2": "#FAF6EC", "gitBranchLabel3": "#FAF6EC",
+  "tagLabelBackground": "#F6EDD9", "tagLabelBorder": "#9C721D", "tagLabelColor": "#7A5A12",
+  "fontFamily": "ui-monospace, SF Mono, Menlo, monospace"
+}}}%%
+gitGraph
+    commit id: "init workload"
+    branch run/greenfield
+    commit id: "impl ∥ tests ∥ docs"
+    commit id: "verified @ revision"
+    checkout main
+    merge run/greenfield tag: "release approved"
+    branch run/brownfield
+    commit id: "migration 002 (gated)"
+    commit id: "regression → repair"
+    commit id: "re-verified"
+    checkout main
+    merge run/brownfield tag: "release approved"
+    branch run/ambiguous
+    commit id: "60s contract (assumed)"
+    commit id: "re-plan → 5s contract"
+    commit id: "subgraph re-verified"
+    checkout main
+    merge run/ambiguous tag: "release approved"
+```
 
 1. **Greenfield** — builds the baseline service. Proves parallel fan-out
    (impl / tests / docs in one wave), synchronization at integrate, an injected
@@ -150,6 +241,7 @@ policies/               policy-as-code (default deny)
 tests/                  116 tests across control plane, workload, scenarios
 docs/                   architecture, decisions (ADRs), operations, evaluation
 docs/assessment/        the original blueprint this implements
+Dockerfile compose.yaml ase-env.sh    the containerized environment
 ```
 
 ## Documentation

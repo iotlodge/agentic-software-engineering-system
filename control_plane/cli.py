@@ -160,8 +160,8 @@ def cmd_serve(args):
 
     from .api import create_app
     app = create_app(ROOT)
-    print(f"Daylight Glass dashboard -> http://127.0.0.1:{args.port}")
-    uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
+    print(f"Daylight Glass dashboard -> http://{args.host}:{args.port}")
+    uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
 
 
 def cmd_demo(args):
@@ -248,6 +248,7 @@ def main():
 
     p = sub.add_parser("serve", help="dashboard")
     p.add_argument("--port", type=int, default=8787)
+    p.add_argument("--host", default="127.0.0.1")
     p.set_defaults(func=cmd_serve, mode="mock")
 
     p = sub.add_parser("demo", help="run all three scenarios, auto-approved")

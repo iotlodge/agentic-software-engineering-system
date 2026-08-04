@@ -1,0 +1,12 @@
+.git
+.ase
+.venv
+.env
+tmp
+__pycache__
+*.pyc
+.pytest_cache
+shortener-rs/target
+.idea
+.DS_Store
+CLAUDE*.md

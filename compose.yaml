@@ -1,0 +1,53 @@
+# Agentic Software Engineering System — containerized environment.
+# Drive it with ./ase-env.sh (start | stop | restart | status | logs | demo ...).
+#
+# Services:
+#   dashboard      control plane + Daylight Glass UI        http://localhost:8787
+#   demo           one-shot: runs all three governed scenarios (profile: demo)
+#   shortener-py   Python reference workload                http://localhost:8000
+#   shortener-rs   Rust parity workload                     http://localhost:8788
+
+services:
+  dashboard:
+    build: .
+    image: ase-control-plane
+    ports:
+      - "8787:8787"
+    volumes:
+      - ase-state:/app/.ase
+    restart: unless-stopped
+
+  demo:
+    image: ase-control-plane
+    profiles: ["demo"]
+    command: ["uv", "run", "ase", "demo", "--keep"]
+    volumes:
+      - ase-state:/app/.ase
+
+  shortener-py:
+    image: ase-control-plane
+    profiles: ["workload"]
+    command: ["uv", "run", "uvicorn", "shortener.api:app",
+              "--host", "0.0.0.0", "--port", "8000"]
+    environment:
+      SHORTENER_DB: /data/shortener.db
+    ports:
+      - "8000:8000"
+    volumes:
+      - workload-py-data:/data
+    restart: unless-stopped
+
+  shortener-rs:
+    build: shortener-rs
+    image: ase-shortener-rs
+    profiles: ["workload"]
+    ports:
+      - "8788:8788"
+    volumes:
+      - workload-rs-data:/data
+    restart: unless-stopped
+
+volumes:
+  ase-state:
+  workload-py-data:
+  workload-rs-data:

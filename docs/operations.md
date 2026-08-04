@@ -8,6 +8,24 @@ uv run pytest              # full suite (control plane + workload + scenarios)
 cd shortener-rs && cargo test   # optional: Rust parity workload
 ```
 
+## Dockerized environment
+
+`./ase-env.sh` wraps `compose.yaml` (services: `dashboard`, one-shot `demo`,
+and — under the `workload` profile — `shortener-py` on :8000 and
+`shortener-rs` on :8788):
+
+| Command | Effect |
+|---|---|
+| `./ase-env.sh start [--all]` | Build (first run) and start the dashboard; `--all` adds both workload services |
+| `./ase-env.sh demo` | Run the three governed scenarios inside the container (state persists in the `ase-state` volume) |
+| `./ase-env.sh stop` / `restart [--all]` | Stop / bounce; named volumes survive |
+| `./ase-env.sh status` / `logs [service]` | Health and logs |
+| `./ase-env.sh build` | Rebuild images |
+| `./ase-env.sh clean` | Stop and **delete** state volumes (fresh slate) |
+
+The control-plane image includes git (worktrees are real) and never receives
+your `.env` — it is dockerignored, and live LLM mode is a host-side concern.
+
 ## CLI reference (`ase`)
 
 | Command | Purpose |
